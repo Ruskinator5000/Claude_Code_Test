@@ -4,6 +4,8 @@
 import http.server
 import json
 import os
+import ssl
+import sys
 import urllib.parse
 import urllib.request
 
@@ -34,13 +36,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         try:
             url = N8N_WEBHOOK_URL + "?message=" + urllib.parse.quote(message, safe="")
             req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            ctx = ssl.create_default_context()
+            with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
                 body = resp.read()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(body)
         except Exception as e:
+            print(f"[PROXY ERROR] {type(e).__name__}: {e}", file=sys.stderr)
             self._json_response(502, {"error": str(e)})
 
     def _json_response(self, code, obj):
@@ -53,5 +57,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     with http.server.HTTPServer(("", PORT), Handler) as httpd:
         print(f"Serving at http://localhost:{PORT}")
+        print(f"N8N_WEBHOOK_URL={'set' if N8N_WEBHOOK_URL else 'NOT SET'}")
         print("Press Ctrl+C to stop.")
         httpd.serve_forever()
