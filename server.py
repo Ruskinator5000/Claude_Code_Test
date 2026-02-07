@@ -35,7 +35,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         try:
             url = N8N_WEBHOOK_URL + "?message=" + urllib.parse.quote(message, safe="")
-            req = urllib.request.Request(url)
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "AgentTerminal/1.0",
+                "Accept": "application/json",
+            })
             ctx = ssl.create_default_context()
             with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
                 body = resp.read()
