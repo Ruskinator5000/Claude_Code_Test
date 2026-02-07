@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Terminal</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --matrix-green: #00aaff;
+    --matrix-dim: #0088cc;
+    --matrix-dark: #005580;
+    --bg: #0a0a0a;
+    --glow: 0 0 5px #00aaff, 0 0 10px rgba(0, 170, 255, 0.3);
+  }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--matrix-green);
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* CRT scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15) 0px,
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* CRT flicker */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 170, 255, 0.015);
+    pointer-events: none;
+    z-index: 999;
+    animation: flicker 0.1s infinite alternate;
+  }
+
+  @keyframes flicker {
+    0% { opacity: 0.97; }
+    100% { opacity: 1; }
+  }
+
+  /* Matrix rain canvas */
+  #matrix-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.12;
+  }
+
+  /* Main terminal container */
+  #terminal {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 16px;
+  }
+
+  /* Header */
+  #header {
+    padding: 16px 0 8px;
+    border-bottom: 1px solid var(--matrix-dark);
+    flex-shrink: 0;
+    text-shadow: var(--glow);
+  }
+
+  #header h1 {
+    font-size: 14px;
+    font-weight: normal;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  #header .status {
+    font-size: 12px;
+    color: var(--matrix-dim);
+    margin-top: 2px;
+  }
+
+  #header .status .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: var(--matrix-green);
+    border-radius: 50%;
+    margin-right: 6px;
+    box-shadow: 0 0 6px var(--matrix-green);
+    animation: pulse-dot 2s infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* Chat messages area */
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--matrix-dark) transparent;
+  }
+
+  #messages::-webkit-scrollbar { width: 4px; }
+  #messages::-webkit-scrollbar-track { background: transparent; }
+  #messages::-webkit-scrollbar-thumb { background: var(--matrix-dark); border-radius: 2px; }
+
+  .message {
+    margin-bottom: 12px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .message .label {
+    font-size: 12px;
+    margin-bottom: 2px;
+  }
+
+  .message.user .label {
+    color: var(--matrix-dim);
+  }
+
+  .message.bot .label {
+    color: var(--matrix-green);
+    text-shadow: var(--glow);
+  }
+
+  .message .text {
+    color: #c0e0ff;
+    padding-left: 4px;
+  }
+
+  .message.user .text {
+    color: #a0a0a0;
+  }
+
+  .message.bot .text {
+    color: var(--matrix-green);
+    text-shadow: 0 0 3px rgba(0, 170, 255, 0.4);
+  }
+
+  /* Typing / loading indicator */
+  .typing-indicator {
+    color: var(--matrix-dim);
+    margin-bottom: 12px;
+  }
+
+  .typing-indicator .dots::after {
+    content: '';
+    animation: dots 1.4s steps(4, end) infinite;
+  }
+
+  @keyframes dots {
+    0%  { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+    100% { content: ''; }
+  }
+
+  /* Blinking cursor for typed text */
+  .cursor {
+    display: inline-block;
+    width: 8px;
+    height: 15px;
+    background: var(--matrix-green);
+    vertical-align: text-bottom;
+    animation: blink-cursor 0.7s step-end infinite;
+    margin-left: 1px;
+  }
+
+  @keyframes blink-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* Input area */
+  #input-area {
+    flex-shrink: 0;
+    border-top: 1px solid var(--matrix-dark);
+    padding: 12px 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  #input-area .prompt {
+    color: var(--matrix-green);
+    text-shadow: var(--glow);
+    font-size: 15px;
+    user-select: none;
+    flex-shrink: 0;
+  }
+
+  #user-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--matrix-green);
+    font-family: inherit;
+    font-size: 15px;
+    caret-color: var(--matrix-green);
+    text-shadow: 0 0 3px rgba(0, 170, 255, 0.3);
+  }
+
+  #user-input::placeholder {
+    color: var(--matrix-dark);
+  }
+
+  /* Welcome message */
+  .welcome {
+    color: var(--matrix-dim);
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+
+  .welcome .ascii-line {
+    color: var(--matrix-dark);
+  }
+</style>
+</head>
+<body>
+
+<canvas id="matrix-bg"></canvas>
+
+<div id="terminal">
+  <div id="header">
+    <h1>// Agent Terminal v1.0</h1>
+    <div class="status"><span class="dot"></span>Connection established</div>
+  </div>
+
+  <div id="messages">
+    <div class="welcome">
+      <div class="ascii-line">========================================</div>
+      <div>Welcome to the Agent Terminal.</div>
+      <div>Type a message and press Enter to begin.</div>
+      <div class="ascii-line">========================================</div>
+    </div>
+  </div>
+
+  <div id="input-area">
+    <span class="prompt">&gt;&nbsp;</span>
+    <input type="text" id="user-input" placeholder="Enter message..." autofocus autocomplete="off" spellcheck="false">
+  </div>
+</div>
+
+<script>
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('user-input');
+
+// --- Matrix digital rain ---
+(function initMatrixRain() {
+  const canvas = document.getElementById('matrix-bg');
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF';
+  const fontSize = 14;
+  let columns = Math.floor(canvas.width / fontSize);
+  let drops = new Array(columns).fill(1);
+
+  window.addEventListener('resize', () => {
+    columns = Math.floor(canvas.width / fontSize);
+    drops = new Array(columns).fill(1);
+  });
+
+  function draw() {
+    ctx.fillStyle = 'rgba(10, 10, 10, 0.06)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#00aaff';
+    ctx.font = fontSize + 'px monospace';
+
+    for (let i = 0; i < drops.length; i++) {
+      const char = chars[Math.floor(Math.random() * chars.length)];
+      ctx.fillText(char, i * fontSize, drops[i] * fontSize);
+
+      if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+        drops[i] = 0;
+      }
+      drops[i]++;
+    }
+    setTimeout(() => requestAnimationFrame(draw), 13);
+  }
+  draw();
+})();
+
+// --- Chat logic ---
+function scrollToBottom() {
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function appendMessage(role, text) {
+  const div = document.createElement('div');
+  div.classList.add('message', role);
+
+  const label = document.createElement('div');
+  label.classList.add('label');
+  label.textContent = role === 'user' ? '[YOU]' : '[AGENT]';
+
+  const textEl = document.createElement('div');
+  textEl.classList.add('text');
+
+  div.appendChild(label);
+  div.appendChild(textEl);
+  messagesEl.appendChild(div);
+
+  if (role === 'bot') {
+    typeText(textEl, text);
+  } else {
+    textEl.textContent = text;
+    scrollToBottom();
+  }
+}
+
+function typeText(el, text) {
+  let i = 0;
+  const cursor = document.createElement('span');
+  cursor.classList.add('cursor');
+  el.appendChild(cursor);
+
+  function tick() {
+    if (i < text.length) {
+      el.insertBefore(document.createTextNode(text[i]), cursor);
+      i++;
+      scrollToBottom();
+      setTimeout(tick, 18 + Math.random() * 25);
+    } else {
+      cursor.remove();
+      scrollToBottom();
+    }
+  }
+  tick();
+}
+
+function showTypingIndicator() {
+  const div = document.createElement('div');
+  div.classList.add('typing-indicator');
+  div.id = 'typing';
+  div.innerHTML = '[AGENT] Processing<span class="dots"></span>';
+  messagesEl.appendChild(div);
+  scrollToBottom();
+}
+
+function removeTypingIndicator() {
+  const el = document.getElementById('typing');
+  if (el) el.remove();
+}
+
+// --- Send message & n8n integration ---
+async function sendMessage(text) {
+  appendMessage('user', text);
+  showTypingIndicator();
+
+  try {
+    const url = '/api/chat?message=' + encodeURIComponent(text);
+    const res = await fetch(url);
+
+    if (!res.ok) throw new Error('Server returned ' + res.status);
+    const data = await res.json();
+
+    let reply;
+    if (Array.isArray(data)) {
+      reply = data[0]?.text || data[0]?.reply || data[0]?.response || data[0]?.output || data[0]?.message || JSON.stringify(data);
+    } else {
+      reply = data.text || data.reply || data.response || data.output || data.message || JSON.stringify(data);
+    }
+
+    removeTypingIndicator();
+    appendMessage('bot', reply);
+  } catch (err) {
+    removeTypingIndicator();
+    appendMessage('bot', 'Error: ' + err.message);
+  }
+}
+
+// --- Input handling ---
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const text = inputEl.value.trim();
+    if (!text) return;
+    inputEl.value = '';
+    sendMessage(text);
+  }
+});
+
+// Keep input focused
+document.addEventListener('click', () => inputEl.focus());
+</script>
+</body>
+</html>
